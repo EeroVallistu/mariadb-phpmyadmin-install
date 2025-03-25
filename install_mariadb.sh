@@ -139,9 +139,35 @@ print_status "Enabling PHP-FPM..."
 systemctl enable php8.2-fpm
 systemctl start php8.2-fpm
 
-# Install phpMyAdmin
-print_status "Installing phpMyAdmin..."
-apt install -y phpmyadmin
+# Install phpMyAdmin manually instead of using the package manager
+print_status "Installing phpMyAdmin manually..."
+# Create directory for phpMyAdmin
+mkdir -p /usr/share/phpmyadmin
+
+# Get the latest version
+PHPMYADMIN_VERSION=$(curl -s https://www.phpmyadmin.net/downloads/ | grep -m1 "Download 5.2" | grep -oP '5\.2\.[0-9]+')
+if [ -z "$PHPMYADMIN_VERSION" ]; then
+    PHPMYADMIN_VERSION="5.2.1" # Fallback to a known version if we can't get the latest
+fi
+
+print_status "Downloading phpMyAdmin $PHPMYADMIN_VERSION..."
+# Download and extract phpMyAdmin
+wget -O /tmp/phpmyadmin.zip "https://files.phpmyadmin.net/phpMyAdmin/${PHPMYADMIN_VERSION}/phpMyAdmin-${PHPMYADMIN_VERSION}-all-languages.zip"
+apt install -y unzip
+unzip -q /tmp/phpmyadmin.zip -d /tmp
+cp -a /tmp/phpMyAdmin-${PHPMYADMIN_VERSION}-all-languages/* /usr/share/phpmyadmin/
+rm -rf /tmp/phpMyAdmin-${PHPMYADMIN_VERSION}-all-languages /tmp/phpmyadmin.zip
+
+# Set permissions
+chown -R www-data:www-data /usr/share/phpmyadmin
+
+# Create phpMyAdmin configuration file
+print_status "Configuring phpMyAdmin..."
+cp /usr/share/phpmyadmin/config.sample.inc.php /usr/share/phpmyadmin/config.inc.php
+
+# Generate a random blowfish secret
+BLOWFISH_SECRET=$(openssl rand -base64 32)
+sed -i "s/\$cfg\['blowfish_secret'\] = ''/\$cfg\['blowfish_secret'\] = '$BLOWFISH_SECRET'/" /usr/share/phpmyadmin/config.inc.php
 
 # Configure Nginx for phpMyAdmin
 print_status "Configuring Nginx for phpMyAdmin..."
@@ -173,12 +199,6 @@ server {
 }
 EOL
 
-# Create symbolic link to phpMyAdmin
-if [ ! -d /usr/share/phpmyadmin ]; then
-    print_status "Creating symbolic link for phpMyAdmin..."
-    ln -s /usr/share/phpmyadmin /usr/share/nginx/html/
-fi
-
 # Test Nginx configuration
 nginx -t
 
@@ -186,13 +206,6 @@ nginx -t
 print_status "Restarting Nginx..."
 systemctl restart nginx
 systemctl enable nginx
-
-# Additional security for phpMyAdmin
-print_status "Securing phpMyAdmin..."
-
-# Generate a random blowfish secret
-BLOWFISH_SECRET=$(openssl rand -base64 32)
-sed -i "s/\$cfg\['blowfish_secret'\] = ''/\$cfg\['blowfish_secret'\] = '$BLOWFISH_SECRET'/" /etc/phpmyadmin/config.inc.php
 
 # Final status
 print_status "Installation completed successfully!"
