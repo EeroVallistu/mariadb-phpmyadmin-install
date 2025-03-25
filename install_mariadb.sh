@@ -139,73 +139,48 @@ print_status "Enabling PHP-FPM..."
 systemctl enable php8.2-fpm
 systemctl start php8.2-fpm
 
-# Install phpMyAdmin manually instead of using the package manager
-print_status "Installing phpMyAdmin manually..."
+# Install phpMyAdmin from Debian repository without interactive prompts
+print_status "Installing phpMyAdmin from repository..."
 
-# Install curl if it's not already installed
-if ! command -v curl &> /dev/null; then
-    print_status "Installing curl..."
-    apt install -y curl
-fi
+# Pre-configure phpMyAdmin to avoid any prompts
+print_status "Pre-configuring phpMyAdmin installation..."
+debconf-set-selections <<EOF
+phpmyadmin phpmyadmin/reconfigure-webserver multiselect none
+phpmyadmin phpmyadmin/dbconfig-install boolean false
+phpmyadmin phpmyadmin/app-password-confirm password 
+phpmyadmin phpmyadmin/mysql/admin-pass password 
+phpmyadmin phpmyadmin/password-confirm password 
+phpmyadmin phpmyadmin/setup-password password 
+phpmyadmin phpmyadmin/mysql/app-pass password 
+EOF
 
-# Create directory for phpMyAdmin
-mkdir -p /usr/share/phpmyadmin
+# Install phpMyAdmin non-interactively
+print_status "Installing phpMyAdmin package..."
+DEBIAN_FRONTEND=noninteractive apt-get install -y phpmyadmin
 
-# Default phpMyAdmin version
-DEFAULT_VERSION="5.2.1"
-
-# Ask if user wants to specify a different phpMyAdmin version
-print_status "phpMyAdmin version selection:"
-read -p "Use default version ($DEFAULT_VERSION)? [Y/n]: " USE_DEFAULT
-USE_DEFAULT=${USE_DEFAULT:-Y}
-
-if [[ $USE_DEFAULT =~ ^[Yy]$ ]]; then
-    PHPMYADMIN_VERSION="$DEFAULT_VERSION"
-    print_status "Using default phpMyAdmin version: $PHPMYADMIN_VERSION"
-else
-    read -p "Enter phpMyAdmin version (e.g., 5.2.0, 5.1.3): " CUSTOM_VERSION
+# Create phpMyAdmin configuration file if it doesn't exist properly
+if [ ! -f /etc/phpmyadmin/config.inc.php ] || ! grep -q "blowfish_secret" /etc/phpmyadmin/config.inc.php; then
+    print_status "Configuring phpMyAdmin..."
     
-    # Use default if nothing entered
-    if [ -z "$CUSTOM_VERSION" ]; then
-        PHPMYADMIN_VERSION="$DEFAULT_VERSION"
-        print_status "No version specified, using default version: $PHPMYADMIN_VERSION"
+    # Make sure directories exist
+    mkdir -p /etc/phpmyadmin
+    
+    # Copy sample config if needed
+    if [ -f /usr/share/phpmyadmin/config.sample.inc.php ] && [ ! -f /etc/phpmyadmin/config.inc.php ]; then
+        cp /usr/share/phpmyadmin/config.sample.inc.php /etc/phpmyadmin/config.inc.php
+    fi
+    
+    # Generate a 32-character blowfish secret
+    BLOWFISH_SECRET=$(openssl rand -hex 16)
+    print_status "Generated a 32-character blowfish secret for cookie encryption"
+    
+    # Update the configuration
+    if grep -q "blowfish_secret" /etc/phpmyadmin/config.inc.php; then
+        sed -i "s#\\\$cfg\['blowfish_secret'\] = .*#\\\$cfg\['blowfish_secret'\] = '$BLOWFISH_SECRET';#" /etc/phpmyadmin/config.inc.php
     else
-        # Check if the specified version exists
-        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://files.phpmyadmin.net/phpMyAdmin/${CUSTOM_VERSION}/phpMyAdmin-${CUSTOM_VERSION}-all-languages.zip")
-        
-        if [ "$HTTP_STATUS" == "200" ]; then
-            PHPMYADMIN_VERSION="$CUSTOM_VERSION"
-            print_status "Using specified phpMyAdmin version: $PHPMYADMIN_VERSION"
-        else
-            print_warning "Version $CUSTOM_VERSION not found. Using default version instead."
-            PHPMYADMIN_VERSION="$DEFAULT_VERSION"
-        fi
+        echo "\$cfg['blowfish_secret'] = '$BLOWFISH_SECRET';" >> /etc/phpmyadmin/config.inc.php
     fi
 fi
-
-print_status "Downloading phpMyAdmin $PHPMYADMIN_VERSION..."
-
-# Download and extract phpMyAdmin
-wget -O /tmp/phpmyadmin.zip "https://files.phpmyadmin.net/phpMyAdmin/${PHPMYADMIN_VERSION}/phpMyAdmin-${PHPMYADMIN_VERSION}-all-languages.zip"
-apt install -y unzip
-unzip -q /tmp/phpmyadmin.zip -d /tmp
-cp -a /tmp/phpMyAdmin-${PHPMYADMIN_VERSION}-all-languages/* /usr/share/phpmyadmin/
-rm -rf /tmp/phpMyAdmin-${PHPMYADMIN_VERSION}-all-languages /tmp/phpmyadmin.zip
-
-# Set permissions
-chown -R www-data:www-data /usr/share/phpmyadmin
-
-# Create phpMyAdmin configuration file
-print_status "Configuring phpMyAdmin..."
-cp /usr/share/phpmyadmin/config.sample.inc.php /usr/share/phpmyadmin/config.inc.php
-
-# Generate a 32-character blowfish secret (the correct length according to docs)
-# This uses hexadecimal format (2 chars per byte) for 16 bytes = 32 chars total
-BLOWFISH_SECRET=$(openssl rand -hex 16)
-print_status "Generated a 32-character blowfish secret for cookie encryption"
-
-# Update the config with the correctly sized secret
-sed -i "s#\\\$cfg\['blowfish_secret'\] = ''#\\\$cfg\['blowfish_secret'\] = '$BLOWFISH_SECRET'#" /usr/share/phpmyadmin/config.inc.php
 
 # Configure Nginx for phpMyAdmin
 print_status "Configuring Nginx for phpMyAdmin..."
