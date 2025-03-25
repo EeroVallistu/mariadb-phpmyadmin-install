@@ -177,40 +177,46 @@ sed -i "s/\$cfg\['blowfish_secret'\] = ''/\$cfg\['blowfish_secret'\] = '$BLOWFIS
 # Configure Nginx for phpMyAdmin
 print_status "Configuring Nginx for phpMyAdmin..."
 
-# Create a Nginx configuration file for phpMyAdmin
-cat > /etc/nginx/conf.d/phpmyadmin.conf << 'EOL'
+# Create the web server document root if it doesn't exist
+mkdir -p /var/www/html
+
+# Create a symbolic link from phpMyAdmin to the web server's document root
+print_status "Creating symbolic link for phpMyAdmin..."
+ln -sf /usr/share/phpmyadmin /var/www/html/phpmyadmin
+
+# Set the correct permissions
+chown -R www-data:www-data /var/www/html/phpmyadmin
+chmod -R 755 /usr/share/phpmyadmin
+
+# Create a Nginx configuration file using the default site
+cat > /etc/nginx/sites-available/default << 'EOL'
 server {
-    listen 80;
-    listen [::]:80;
+    listen 80 default_server;
+    listen [::]:80 default_server;
     
-    # Set server_name to your domain or IP
-    server_name _;
-    
-    # phpMyAdmin directory
-    root /usr/share/phpmyadmin;
+    root /var/www/html;
     index index.php index.html index.htm;
     
-    # Add access to phpmyadmin directly from root URL
+    server_name _;
+    
+    location / {
+        try_files $uri $uri/ =404;
+    }
+    
     location /phpmyadmin {
-        alias /usr/share/phpmyadmin/;
         index index.php index.html index.htm;
-        
         location ~ ^/phpmyadmin/(.+\.php)$ {
-            alias /usr/share/phpmyadmin/$1;
+            try_files $uri =404;
+            root /var/www/html;
             fastcgi_pass unix:/run/php/php8.2-fpm.sock;
             fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
             include fastcgi_params;
-            fastcgi_param SCRIPT_FILENAME $request_filename;
         }
         
         location ~* ^/phpmyadmin/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt))$ {
-            alias /usr/share/phpmyadmin/$1;
+            root /var/www/html;
         }
-    }
-    
-    # Original phpMyAdmin configuration
-    location / {
-        try_files $uri $uri/ =404;
     }
     
     location ~ \.php$ {
@@ -224,24 +230,23 @@ server {
 }
 EOL
 
-# Create a symbolic link to ensure phpMyAdmin is also accessible at /phpmyadmin
-print_status "Creating symbolic link for /phpmyadmin path..."
-mkdir -p /usr/share/nginx/html/phpmyadmin
-if [ ! -L /usr/share/nginx/html/phpmyadmin ]; then
-    ln -sf /usr/share/phpmyadmin/* /usr/share/nginx/html/phpmyadmin/
+# Remove any previous phpMyAdmin configuration to avoid conflicts
+if [ -f /etc/nginx/sites-enabled/phpmyadmin ]; then
+    rm -f /etc/nginx/sites-enabled/phpmyadmin
 fi
 
-# Make sure permissions are correct
-chown -R www-data:www-data /usr/share/phpmyadmin
-chmod -R 755 /usr/share/phpmyadmin
+# Make sure the default site is enabled
+if [ ! -f /etc/nginx/sites-enabled/default ]; then
+    ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/
+fi
 
 # Test Nginx configuration
+print_status "Testing Nginx configuration..."
 nginx -t
 
 # Restart Nginx
 print_status "Restarting Nginx..."
 systemctl restart nginx
-systemctl enable nginx
 
 # Final status
 print_status "Installation completed successfully!"
