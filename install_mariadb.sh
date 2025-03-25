@@ -305,10 +305,13 @@ fi
 
 # Ask if user wants to set up HTTPS
 print_status "HTTPS Configuration:"
-read -p "Would you like to set up HTTPS with Let's Encrypt? (y/n) [n]: " SETUP_HTTPS
-SETUP_HTTPS=${SETUP_HTTPS:-n}
+read -p "Set up HTTPS? (1: No, 2: Let's Encrypt with domain, 3: Self-signed for IP/localhost) [1]: " HTTPS_OPTION
+HTTPS_OPTION=${HTTPS_OPTION:-1}
 
-if [[ $SETUP_HTTPS =~ ^[Yy]$ ]]; then
+if [ "$HTTPS_OPTION" = "2" ]; then
+    # Let's Encrypt option (requires domain)
+    print_status "Setting up HTTPS with Let's Encrypt..."
+    
     # Install Certbot and Nginx plugin
     print_status "Installing Certbot for Let's Encrypt certificates..."
     apt install -y certbot python3-certbot-nginx
@@ -349,6 +352,153 @@ if [[ $SETUP_HTTPS =~ ^[Yy]$ ]]; then
             print_warning "You can try manually running: certbot --nginx -d $DOMAIN_NAME"
         fi
     fi
+elif [ "$HTTPS_OPTION" = "3" ]; then
+    # Self-signed certificate option (works with IP or localhost)
+    print_status "Setting up HTTPS with self-signed certificate..."
+    
+    # Install OpenSSL if not already installed
+    apt install -y openssl
+    
+    # Create directory for certificates
+    mkdir -p /etc/nginx/ssl
+    
+    # Generate self-signed certificate
+    print_status "Generating self-signed SSL certificate..."
+    
+    # Get the server IP or use localhost
+    if [ "$NETWORK_ACCESS" = true ]; then
+        SERVER_IP=$(hostname -I | awk '{print $1}')
+    else
+        SERVER_IP="localhost"
+    fi
+    
+    # Create OpenSSL config file for the certificate
+    cat > /tmp/openssl.cnf << EOL
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C = US
+ST = State
+L = City
+O = Organization
+OU = Organizational Unit
+CN = $SERVER_IP
+
+[v3_req]
+keyUsage = keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+IP.1 = $SERVER_IP
+DNS.1 = localhost
+EOL
+    
+    # Generate key and certificate
+    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+        -keyout /etc/nginx/ssl/nginx-selfsigned.key \
+        -out /etc/nginx/ssl/nginx-selfsigned.crt \
+        -config /tmp/openssl.cnf
+    
+    # Create a Diffie-Hellman group
+    print_status "Generating Diffie-Hellman parameters (this may take a few minutes)..."
+    openssl dhparam -out /etc/nginx/ssl/dhparam.pem 2048
+    
+    # Create a strong SSL configuration snippet
+    cat > /etc/nginx/snippets/self-signed.conf << EOL
+ssl_certificate /etc/nginx/ssl/nginx-selfsigned.crt;
+ssl_certificate_key /etc/nginx/ssl/nginx-selfsigned.key;
+EOL
+
+    cat > /etc/nginx/snippets/ssl-params.conf << EOL
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers on;
+ssl_dhparam /etc/nginx/ssl/dhparam.pem;
+ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384;
+ssl_ecdh_curve secp384r1;
+ssl_session_timeout 10m;
+ssl_session_cache shared:SSL:10m;
+ssl_session_tickets off;
+ssl_stapling off;
+ssl_stapling_verify off;
+resolver 8.8.8.8 8.8.4.4 valid=300s;
+resolver_timeout 5s;
+# Disable strict transport security for now, you can enable it later
+#add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload";
+add_header X-Frame-Options DENY;
+add_header X-Content-Type-Options nosniff;
+add_header X-XSS-Protection "1; mode=block";
+EOL
+
+    # Update Nginx configuration to use SSL
+    cat > /etc/nginx/sites-available/default << EOL
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    
+    server_name _;
+    
+    # Redirect all HTTP traffic to HTTPS
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    
+    include snippets/self-signed.conf;
+    include snippets/ssl-params.conf;
+    
+    root /var/www/html;
+    index index.php index.html index.htm;
+    
+    server_name _;
+    
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+    
+    location /phpmyadmin {
+        index index.php index.html index.htm;
+        location ~ ^/phpmyadmin/(.+\.php)$ {
+            try_files \$uri =404;
+            root /var/www/html;
+            fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+            include fastcgi_params;
+        }
+        
+        location ~* ^/phpmyadmin/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt))$ {
+            root /var/www/html;
+        }
+    }
+    
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+    }
+    
+    location ~ /\.ht {
+        deny all;
+    }
+}
+EOL
+
+    # Set proper permissions
+    chmod 600 /etc/nginx/ssl/nginx-selfsigned.key
+    
+    print_status "Self-signed HTTPS has been set up!"
+    if [ "$NETWORK_ACCESS" = true ]; then
+        print_status "Your site is now accessible at https://$SERVER_IP"
+    else
+        print_status "Your site is now accessible at https://localhost"
+    fi
+    print_warning "Since this is a self-signed certificate, your browser will show a security warning."
+    print_warning "You will need to add a security exception or proceed past the warning."
 else
     print_status "Skipping HTTPS setup."
 fi

@@ -64,7 +64,11 @@ When you run the script, it will:
 
 ### HTTPS Configuration
 - Option to set up secure HTTPS access using Let's Encrypt certificates
-- Automatic certificate renewal
+- Multiple SSL options to fit your needs:
+  - **Let's Encrypt**: For production sites with domain names
+  - **Self-signed certificates**: For development or internal servers using IP addresses
+- Automatic certificate renewal for Let's Encrypt
+- Strong SSL security settings included
 - Redirects HTTP traffic to HTTPS for enhanced security
 - Requires a valid domain name pointing to your server
 
@@ -88,6 +92,11 @@ Log in with your MariaDB username and password.
 - Verify firewall settings: `ufw status`
 - Check bind-address in MariaDB config: `/etc/mysql/mariadb.conf.d/50-server.cnf`
 - Verify user has appropriate permissions: `SHOW GRANTS FOR 'username'@'%';`
+
+### Browser Warns About Insecure Certificate
+- This is normal when using self-signed certificates
+- Click "Advanced" and then "Proceed to site" (Chrome) or add a security exception (Firefox)
+- For production sites, use the Let's Encrypt option with a real domain name
 
 ## Security Considerations
 
