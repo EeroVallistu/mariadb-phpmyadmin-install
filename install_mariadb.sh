@@ -303,6 +303,56 @@ if [ ! -f /etc/nginx/sites-enabled/default ]; then
     ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/
 fi
 
+# Ask if user wants to set up HTTPS
+print_status "HTTPS Configuration:"
+read -p "Would you like to set up HTTPS with Let's Encrypt? (y/n) [n]: " SETUP_HTTPS
+SETUP_HTTPS=${SETUP_HTTPS:-n}
+
+if [[ $SETUP_HTTPS =~ ^[Yy]$ ]]; then
+    # Install Certbot and Nginx plugin
+    print_status "Installing Certbot for Let's Encrypt certificates..."
+    apt install -y certbot python3-certbot-nginx
+    
+    # Get domain name
+    read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
+    
+    if [ -z "$DOMAIN_NAME" ]; then
+        print_warning "No domain provided. Skipping HTTPS setup."
+    else
+        # Get email for certificate notifications
+        read -p "Enter your email (for certificate expiry notifications): " EMAIL_ADDRESS
+        
+        if [ -z "$EMAIL_ADDRESS" ]; then
+            print_warning "No email provided. Using --register-unsafely-without-email option."
+            EMAIL_OPT="--register-unsafely-without-email"
+        else
+            EMAIL_OPT="--email $EMAIL_ADDRESS"
+        fi
+        
+        # Update Nginx configuration to include server_name
+        sed -i "s/server_name _;/server_name $DOMAIN_NAME;/" /etc/nginx/sites-available/default
+        
+        # Reload Nginx to apply the server_name change
+        nginx -s reload
+        
+        # Obtain certificate
+        print_status "Obtaining Let's Encrypt certificate for $DOMAIN_NAME..."
+        certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos $EMAIL_OPT --redirect
+        
+        # Check if certificate was successfully obtained
+        if [ $? -eq 0 ]; then
+            print_status "HTTPS has been successfully set up for $DOMAIN_NAME!"
+            print_status "Your site is now accessible at https://$DOMAIN_NAME"
+            print_status "Certificate will auto-renew via systemd timer"
+        else
+            print_error "Failed to obtain HTTPS certificate. Check domain configuration and connectivity."
+            print_warning "You can try manually running: certbot --nginx -d $DOMAIN_NAME"
+        fi
+    fi
+else
+    print_status "Skipping HTTPS setup."
+fi
+
 # Test Nginx configuration
 print_status "Testing Nginx configuration..."
 nginx -t

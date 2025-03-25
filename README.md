@@ -9,6 +9,7 @@ A bash script for automated installation and configuration of MariaDB and phpMyA
 - Option to configure for local-only or network access
 - Automatic security hardening
 - Fully configured phpMyAdmin with advanced features enabled (bookmarks, SQL history, etc.)
+- Automatic HTTPS configuration with Let's Encrypt certificates
 - User-friendly output with color-coded messages
 
 ## Requirements
@@ -61,10 +62,17 @@ When you run the script, it will:
 - A dedicated database user will be created for remote connections
 - Useful for shared development or small production environments
 
+### HTTPS Configuration
+- Option to set up secure HTTPS access using Let's Encrypt certificates
+- Automatic certificate renewal
+- Redirects HTTP traffic to HTTPS for enhanced security
+- Requires a valid domain name pointing to your server
+
 ## Accessing phpMyAdmin
 
 - **Local installation**: Visit http://localhost/phpmyadmin
 - **Network installation**: Visit http://your-server-ip/phpmyadmin
+- **With HTTPS**: Visit https://your-domain.com/phpmyadmin (if you set up HTTPS)
 
 Log in with your MariaDB username and password.
 
@@ -84,7 +92,7 @@ Log in with your MariaDB username and password.
 ## Security Considerations
 
 - For production environments, consider:
-  - Adding SSL/TLS encryption
+  - Adding SSL/TLS encryption (included if you use the HTTPS setup option)
   - Implementing more restrictive firewall rules
   - Regular security updates
   - Database backups
