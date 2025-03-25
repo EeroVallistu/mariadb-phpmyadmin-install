@@ -170,9 +170,10 @@ chown -R www-data:www-data /usr/share/phpmyadmin
 print_status "Configuring phpMyAdmin..."
 cp /usr/share/phpmyadmin/config.sample.inc.php /usr/share/phpmyadmin/config.inc.php
 
-# Generate a random blowfish secret
+# Generate a random blowfish secret and update config
 BLOWFISH_SECRET=$(openssl rand -base64 32)
-sed -i "s/\$cfg\['blowfish_secret'\] = ''/\$cfg\['blowfish_secret'\] = '$BLOWFISH_SECRET'/" /usr/share/phpmyadmin/config.inc.php
+# Use a different delimiter (#) for sed to avoid issues with special characters
+sed -i "s#\\\$cfg\['blowfish_secret'\] = ''#\\\$cfg\['blowfish_secret'\] = '$BLOWFISH_SECRET'#" /usr/share/phpmyadmin/config.inc.php
 
 # Configure Nginx for phpMyAdmin
 print_status "Configuring Nginx for phpMyAdmin..."
