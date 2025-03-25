@@ -531,7 +531,7 @@ if [ "$NETWORK_ACCESS" = true ]; then
     print_warning "Make sure your server's IP address is static to avoid connection issues."
 else
     print_status "MariaDB is configured for local access only."
-    print_status "phpMyAdmin is available at http://localhost/phpmyadmin"
+    print_status "phpMyAdmin is available at http://$HOST_IP/phpmyadmin"
     print_warning "To enable network access later, edit /etc/mysql/mariadb.conf.d/50-server.cnf and change bind-address to 0.0.0.0"
 fi
 
