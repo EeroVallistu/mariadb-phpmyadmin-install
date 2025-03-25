@@ -151,13 +151,11 @@ fi
 # Create directory for phpMyAdmin
 mkdir -p /usr/share/phpmyadmin
 
-# Get the latest version
-PHPMYADMIN_VERSION=$(curl -s https://www.phpmyadmin.net/downloads/ | grep -m1 "Download 5.2" | grep -oP '5\.2\.[0-9]+')
-if [ -z "$PHPMYADMIN_VERSION" ]; then
-    PHPMYADMIN_VERSION="5.2.1" # Fallback to a known version if we can't get the latest
-fi
-
+# Use a fixed version instead of trying to detect the latest version
+# This avoids issues with parsing the website
+PHPMYADMIN_VERSION="5.2.1"
 print_status "Downloading phpMyAdmin $PHPMYADMIN_VERSION..."
+
 # Download and extract phpMyAdmin
 wget -O /tmp/phpmyadmin.zip "https://files.phpmyadmin.net/phpMyAdmin/${PHPMYADMIN_VERSION}/phpMyAdmin-${PHPMYADMIN_VERSION}-all-languages.zip"
 apt install -y unzip
