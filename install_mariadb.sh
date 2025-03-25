@@ -372,23 +372,25 @@ elif [ "$HTTPS_OPTION" = "3" ]; then
         SERVER_IP="localhost"
     fi
     
-    # Create OpenSSL config file for the certificate
+    # Create a simpler OpenSSL config file with correct key usage flags
     cat > /tmp/openssl.cnf << EOL
 [req]
+default_bits = 2048
+prompt = no
+default_md = sha256
 distinguished_name = req_distinguished_name
 x509_extensions = v3_req
-prompt = no
 
 [req_distinguished_name]
 C = US
 ST = State
 L = City
 O = Organization
-OU = Organizational Unit
 CN = $SERVER_IP
 
 [v3_req]
-keyUsage = keyEncipherment, dataEncipherment
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 
@@ -397,17 +399,13 @@ IP.1 = $SERVER_IP
 DNS.1 = localhost
 EOL
     
-    # Generate key and certificate
+    # Generate key and certificate with correct parameters
     openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
         -keyout /etc/nginx/ssl/nginx-selfsigned.key \
         -out /etc/nginx/ssl/nginx-selfsigned.crt \
         -config /tmp/openssl.cnf
     
-    # Create a Diffie-Hellman group
-    print_status "Generating Diffie-Hellman parameters (this may take a few minutes)..."
-    openssl dhparam -out /etc/nginx/ssl/dhparam.pem 2048
-    
-    # Create a strong SSL configuration snippet
+    # Create a simpler SSL configuration with good compatibility
     cat > /etc/nginx/snippets/self-signed.conf << EOL
 ssl_certificate /etc/nginx/ssl/nginx-selfsigned.crt;
 ssl_certificate_key /etc/nginx/ssl/nginx-selfsigned.key;
@@ -415,22 +413,11 @@ EOL
 
     cat > /etc/nginx/snippets/ssl-params.conf << EOL
 ssl_protocols TLSv1.2 TLSv1.3;
-ssl_prefer_server_ciphers on;
-ssl_dhparam /etc/nginx/ssl/dhparam.pem;
-ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384;
-ssl_ecdh_curve secp384r1;
-ssl_session_timeout 10m;
+ssl_prefer_server_ciphers off;
+ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+ssl_session_timeout 1d;
 ssl_session_cache shared:SSL:10m;
 ssl_session_tickets off;
-ssl_stapling off;
-ssl_stapling_verify off;
-resolver 8.8.8.8 8.8.4.4 valid=300s;
-resolver_timeout 5s;
-# Disable strict transport security for now, you can enable it later
-#add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload";
-add_header X-Frame-Options DENY;
-add_header X-Content-Type-Options nosniff;
-add_header X-XSS-Protection "1; mode=block";
 EOL
 
     # Update Nginx configuration to use SSL
