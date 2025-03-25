@@ -392,11 +392,12 @@ elif [ "$HTTPS_OPTION" = "3" ]; then
     # Get the server IP or use localhost
     if [ "$NETWORK_ACCESS" = true ]; then
         SERVER_IP=$(hostname -I | awk '{print $1}')
+        HOSTNAME_VALUE="$SERVER_IP"
     else
-        SERVER_IP="localhost"
+        HOSTNAME_VALUE="localhost"
     fi
     
-    # Create a simpler OpenSSL config file with correct key usage flags
+    # Create a simpler OpenSSL config file without subject alt names
     cat > /tmp/openssl.cnf << EOL
 [req]
 default_bits = 2048
@@ -410,26 +411,22 @@ C = US
 ST = State
 L = City
 O = Organization
-CN = $SERVER_IP
+CN = $HOSTNAME_VALUE
 
 [v3_req]
 basicConstraints = CA:FALSE
 keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
-subjectAltName = @alt_names
-
-[alt_names]
-IP.1 = $SERVER_IP
-DNS.1 = localhost
 EOL
     
     # Generate key and certificate with correct parameters
+    print_status "Generating SSL certificate for $HOSTNAME_VALUE..."
     openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
         -keyout /etc/nginx/ssl/nginx-selfsigned.key \
         -out /etc/nginx/ssl/nginx-selfsigned.crt \
         -config /tmp/openssl.cnf
     
-    # Create a simpler SSL configuration with good compatibility
+    # Create SSL Nginx configurations
     cat > /etc/nginx/snippets/self-signed.conf << EOL
 ssl_certificate /etc/nginx/ssl/nginx-selfsigned.crt;
 ssl_certificate_key /etc/nginx/ssl/nginx-selfsigned.key;
@@ -438,7 +435,7 @@ EOL
     cat > /etc/nginx/snippets/ssl-params.conf << EOL
 ssl_protocols TLSv1.2 TLSv1.3;
 ssl_prefer_server_ciphers off;
-ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305;
 ssl_session_timeout 1d;
 ssl_session_cache shared:SSL:10m;
 ssl_session_tickets off;
