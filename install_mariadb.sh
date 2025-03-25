@@ -49,16 +49,36 @@ fi
 
 # Ask user if they want network access
 print_status "Configuration options:"
-print_status "1. Local installation (recommended, more secure)"
-print_status "2. Network installation (allows connections from other machines)"
+print_status "1. Local installation (MariaDB accessible only from this server)"
+print_status "2. Network installation (MariaDB accessible from other machines)"
 read -p "Select an option [1]: " INSTALL_TYPE
 INSTALL_TYPE=${INSTALL_TYPE:-1}
 
 if [ "$INSTALL_TYPE" == "2" ]; then
     NETWORK_ACCESS=true
     print_status "Network installation selected."
+    # For network installation, phpMyAdmin is automatically accessible from the network
+    PMA_LOCALHOST_ONLY=false
 else
+    NETWORK_ACCESS=false
     print_status "Local installation selected."
+    
+    # By default phpMyAdmin will be accessible from the network even with local MariaDB
+    PMA_LOCALHOST_ONLY=false
+    
+    # Ask if user wants to restrict phpMyAdmin access
+    print_status "phpMyAdmin access options:"
+    print_status "1. Network accessible (default, allows access from other machines)"
+    print_status "2. Localhost only (more secure, accessible only from this server)"
+    read -p "Select phpMyAdmin access option [1]: " PMA_ACCESS
+    PMA_ACCESS=${PMA_ACCESS:-1}
+    
+    if [ "$PMA_ACCESS" == "2" ]; then
+        PMA_LOCALHOST_ONLY=true
+        print_status "phpMyAdmin will be restricted to localhost access only."
+    else
+        print_warning "phpMyAdmin will be accessible from your local network, even though MariaDB is restricted to localhost."
+    fi
 fi
 
 # Update the system
@@ -252,7 +272,52 @@ chown -R www-data:www-data /var/www/html/phpmyadmin
 chmod -R 755 /usr/share/phpmyadmin
 
 # Create a Nginx configuration file using the default site
-cat > /etc/nginx/sites-available/default << 'EOL'
+if [ "$NETWORK_ACCESS" = false ] && [ "$PMA_LOCALHOST_ONLY" = true ]; then
+    # Configure Nginx to listen only on localhost if requested
+    print_status "Configuring Nginx to listen only on localhost..."
+    cat > /etc/nginx/sites-available/default << 'EOL'
+server {
+    listen 127.0.0.1:80 default_server;
+    listen [::1]:80 default_server;
+    
+    root /var/www/html;
+    index index.php index.html index.htm;
+    
+    server_name _;
+    
+    location / {
+        try_files $uri $uri/ =404;
+    }
+    
+    location /phpmyadmin {
+        index index.php index.html index.htm;
+        location ~ ^/phpmyadmin/(.+\.php)$ {
+            try_files $uri =404;
+            root /var/www/html;
+            fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            include fastcgi_params;
+        }
+        
+        location ~* ^/phpmyadmin/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt))$ {
+            root /var/www/html;
+        }
+    }
+    
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+    }
+    
+    location ~ /\.ht {
+        deny all;
+    }
+}
+EOL
+else
+    # Default configuration - listen on all interfaces
+    cat > /etc/nginx/sites-available/default << 'EOL'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -292,15 +357,6 @@ server {
     }
 }
 EOL
-
-# Remove any previous phpMyAdmin configuration to avoid conflicts
-if [ -f /etc/nginx/sites-enabled/phpmyadmin ]; then
-    rm -f /etc/nginx/sites-enabled/phpmyadmin
-fi
-
-# Make sure the default site is enabled
-if [ ! -f /etc/nginx/sites-enabled/default ]; then
-    ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/
 fi
 
 # Ask if user wants to set up HTTPS
@@ -502,16 +558,41 @@ systemctl restart nginx
 print_status "Installation completed successfully!"
 print_status "MariaDB is installed and running."
 
+# Get server IP for both installation types
+HOST_IP=$(hostname -I | awk '{print $1}')
+
 if [ "$NETWORK_ACCESS" = true ]; then
-    HOST_IP=$(hostname -I | awk '{print $1}')
     print_status "MariaDB is configured for network access at: $HOST_IP:3306"
-    print_status "Database user '$DB_USER' can be used for remote connections."
-    print_status "phpMyAdmin is available at http://$HOST_IP/phpmyadmin"
-    print_warning "Make sure your server's IP address is static to avoid connection issues."
+    if [ -n "$DB_USER" ]; then
+        print_status "Database user '$DB_USER' can be used for remote connections."
+    fi
 else
-    print_status "MariaDB is configured for local access only."
-    print_status "phpMyAdmin is available at http://localhost/phpmyadmin"
-    print_warning "To enable network access later, edit /etc/mysql/mariadb.conf.d/50-server.cnf and change bind-address to 0.0.0.0"
+    print_status "MariaDB is configured for local access only (not accessible from other machines)."
+    print_status "Connect to MariaDB using localhost or 127.0.0.1"
+fi
+
+# phpMyAdmin access information
+print_status "phpMyAdmin access information:"
+
+if [ "$NETWORK_ACCESS" = false ] && [ "$PMA_LOCALHOST_ONLY" = true ]; then
+    print_status "- phpMyAdmin is restricted to localhost access only"
+    print_status "- Access URL: http://localhost/phpmyadmin"
+    
+    if [ "$HTTPS_OPTION" = "2" ] || [ "$HTTPS_OPTION" = "3" ]; then
+        print_status "- Secure access: https://localhost/phpmyadmin"
+    fi
+else
+    print_status "- From this server: http://localhost/phpmyadmin"
+    print_status "- From other computers on your network: http://$HOST_IP/phpmyadmin"
+    
+    if [ "$HTTPS_OPTION" = "2" ] || [ "$HTTPS_OPTION" = "3" ]; then
+        print_status "- Secure access: https://$HOST_IP/phpmyadmin"
+    fi
+    
+    if [ "$NETWORK_ACCESS" = false ]; then
+        print_warning "Note: While phpMyAdmin is accessible from your network, the MariaDB server only accepts connections from localhost."
+        print_warning "This means you can view phpMyAdmin from other computers, but database connections will only work from this server."
+    fi
 fi
 
 print_warning "Remember to keep your system updated regularly with: sudo apt update && sudo apt upgrade"
