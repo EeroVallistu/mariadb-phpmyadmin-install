@@ -151,9 +151,38 @@ fi
 # Create directory for phpMyAdmin
 mkdir -p /usr/share/phpmyadmin
 
-# Use a fixed version instead of trying to detect the latest version
-# This avoids issues with parsing the website
-PHPMYADMIN_VERSION="5.2.1"
+# Default phpMyAdmin version
+DEFAULT_VERSION="5.2.1"
+
+# Ask if user wants to specify a different phpMyAdmin version
+print_status "phpMyAdmin version selection:"
+read -p "Use default version ($DEFAULT_VERSION)? [Y/n]: " USE_DEFAULT
+USE_DEFAULT=${USE_DEFAULT:-Y}
+
+if [[ $USE_DEFAULT =~ ^[Yy]$ ]]; then
+    PHPMYADMIN_VERSION="$DEFAULT_VERSION"
+    print_status "Using default phpMyAdmin version: $PHPMYADMIN_VERSION"
+else
+    read -p "Enter phpMyAdmin version (e.g., 5.2.0, 5.1.3): " CUSTOM_VERSION
+    
+    # Use default if nothing entered
+    if [ -z "$CUSTOM_VERSION" ]; then
+        PHPMYADMIN_VERSION="$DEFAULT_VERSION"
+        print_status "No version specified, using default version: $PHPMYADMIN_VERSION"
+    else
+        # Check if the specified version exists
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://files.phpmyadmin.net/phpMyAdmin/${CUSTOM_VERSION}/phpMyAdmin-${CUSTOM_VERSION}-all-languages.zip")
+        
+        if [ "$HTTP_STATUS" == "200" ]; then
+            PHPMYADMIN_VERSION="$CUSTOM_VERSION"
+            print_status "Using specified phpMyAdmin version: $PHPMYADMIN_VERSION"
+        else
+            print_warning "Version $CUSTOM_VERSION not found. Using default version instead."
+            PHPMYADMIN_VERSION="$DEFAULT_VERSION"
+        fi
+    fi
+fi
+
 print_status "Downloading phpMyAdmin $PHPMYADMIN_VERSION..."
 
 # Download and extract phpMyAdmin
