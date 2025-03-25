@@ -170,9 +170,12 @@ chown -R www-data:www-data /usr/share/phpmyadmin
 print_status "Configuring phpMyAdmin..."
 cp /usr/share/phpmyadmin/config.sample.inc.php /usr/share/phpmyadmin/config.inc.php
 
-# Generate a random blowfish secret and update config
-BLOWFISH_SECRET=$(openssl rand -base64 32)
-# Use a different delimiter (#) for sed to avoid issues with special characters
+# Generate a 32-character blowfish secret (the correct length according to docs)
+# This uses hexadecimal format (2 chars per byte) for 16 bytes = 32 chars total
+BLOWFISH_SECRET=$(openssl rand -hex 16)
+print_status "Generated a 32-character blowfish secret for cookie encryption"
+
+# Update the config with the correctly sized secret
 sed -i "s#\\\$cfg\['blowfish_secret'\] = ''#\\\$cfg\['blowfish_secret'\] = '$BLOWFISH_SECRET'#" /usr/share/phpmyadmin/config.inc.php
 
 # Configure Nginx for phpMyAdmin
