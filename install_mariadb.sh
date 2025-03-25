@@ -113,8 +113,32 @@ if [ "$NETWORK_ACCESS" = true ]; then
     # Create a MariaDB user for remote access
     print_status "Creating a database user for remote access..."
     read -p "Enter username for remote database access: " DB_USER
-    read -sp "Enter password for $DB_USER: " DB_PASS
-    echo
+    
+    # Add password with confirmation
+    while true; do
+        read -sp "Enter password for $DB_USER: " DB_PASS
+        echo
+        read -sp "Confirm password: " DB_PASS_CONFIRM
+        echo
+        
+        if [ "$DB_PASS" = "$DB_PASS_CONFIRM" ]; then
+            break
+        else
+            print_error "Passwords do not match. Please try again."
+        fi
+    done
+    
+    # Check if password is empty and warn user
+    if [ -z "$DB_PASS" ]; then
+        print_warning "You've entered an empty password. This is insecure!"
+        read -p "Are you sure you want to use an empty password? (y/n) [n]: " EMPTY_PASS_CONFIRM
+        EMPTY_PASS_CONFIRM=${EMPTY_PASS_CONFIRM:-n}
+        
+        if [[ ! $EMPTY_PASS_CONFIRM =~ ^[Yy]$ ]]; then
+            print_status "Please enter a password for remote database access."
+            exit 1
+        fi
+    fi
     
     mysql -e "CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
     mysql -e "GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;"
