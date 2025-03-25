@@ -182,6 +182,61 @@ if [ ! -f /etc/phpmyadmin/config.inc.php ] || ! grep -q "blowfish_secret" /etc/p
     fi
 fi
 
+# Set up phpMyAdmin Configuration Storage (pmadb)
+print_status "Setting up phpMyAdmin Configuration Storage..."
+
+# Create a user and database for phpMyAdmin
+PMA_USER="pma"
+PMA_PASS=$(openssl rand -hex 12)  # Generate a secure random password
+PMA_DB="phpmyadmin"
+
+# Create database and user
+print_status "Creating database and user for phpMyAdmin Configuration Storage..."
+mysql -e "CREATE DATABASE IF NOT EXISTS $PMA_DB;"
+mysql -e "CREATE USER IF NOT EXISTS '$PMA_USER'@'localhost' IDENTIFIED BY '$PMA_PASS';"
+mysql -e "GRANT ALL PRIVILEGES ON $PMA_DB.* TO '$PMA_USER'@'localhost';"
+mysql -e "FLUSH PRIVILEGES;"
+
+# Import the phpMyAdmin storage database structure
+print_status "Importing phpMyAdmin database structure..."
+if [ -f /usr/share/phpmyadmin/sql/create_tables.sql ]; then
+    mysql $PMA_DB < /usr/share/phpmyadmin/sql/create_tables.sql
+else
+    print_warning "Could not find phpMyAdmin SQL structure file. Configuration storage may not work properly."
+fi
+
+# Update the phpMyAdmin configuration file to use the storage
+print_status "Updating phpMyAdmin configuration to use storage database..."
+cat >> /etc/phpmyadmin/config.inc.php << EOL
+
+/* Configuration Storage database settings */
+\$cfg['Servers'][\$i]['pmadb'] = '$PMA_DB';
+\$cfg['Servers'][\$i]['bookmarktable'] = 'pma__bookmark';
+\$cfg['Servers'][\$i]['relation'] = 'pma__relation';
+\$cfg['Servers'][\$i]['table_info'] = 'pma__table_info';
+\$cfg['Servers'][\$i]['table_coords'] = 'pma__table_coords';
+\$cfg['Servers'][\$i]['pdf_pages'] = 'pma__pdf_pages';
+\$cfg['Servers'][\$i]['column_info'] = 'pma__column_info';
+\$cfg['Servers'][\$i]['history'] = 'pma__history';
+\$cfg['Servers'][\$i]['table_uiprefs'] = 'pma__table_uiprefs';
+\$cfg['Servers'][\$i]['tracking'] = 'pma__tracking';
+\$cfg['Servers'][\$i]['userconfig'] = 'pma__userconfig';
+\$cfg['Servers'][\$i]['recent'] = 'pma__recent';
+\$cfg['Servers'][\$i]['favorite'] = 'pma__favorite';
+\$cfg['Servers'][\$i]['users'] = 'pma__users';
+\$cfg['Servers'][\$i]['usergroups'] = 'pma__usergroups';
+\$cfg['Servers'][\$i]['navigationhiding'] = 'pma__navigationhiding';
+\$cfg['Servers'][\$i]['savedsearches'] = 'pma__savedsearches';
+\$cfg['Servers'][\$i]['central_columns'] = 'pma__central_columns';
+\$cfg['Servers'][\$i]['designer_settings'] = 'pma__designer_settings';
+\$cfg['Servers'][\$i]['export_templates'] = 'pma__export_templates';
+\$cfg['Servers'][\$i]['controluser'] = '$PMA_USER';
+\$cfg['Servers'][\$i]['controlpass'] = '$PMA_PASS';
+EOL
+
+# Make sure the configuration file has the correct permissions
+chmod 644 /etc/phpmyadmin/config.inc.php
+
 # Configure Nginx for phpMyAdmin
 print_status "Configuring Nginx for phpMyAdmin..."
 

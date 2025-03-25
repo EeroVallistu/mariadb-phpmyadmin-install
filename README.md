@@ -8,6 +8,7 @@ A bash script for automated installation and configuration of MariaDB and phpMyA
 - Interactive configuration process
 - Option to configure for local-only or network access
 - Automatic security hardening
+- Fully configured phpMyAdmin with advanced features enabled (bookmarks, SQL history, etc.)
 - User-friendly output with color-coded messages
 
 ## Requirements
