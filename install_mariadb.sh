@@ -183,12 +183,32 @@ server {
     listen 80;
     listen [::]:80;
     
+    # Set server_name to your domain or IP
+    server_name _;
+    
+    # phpMyAdmin directory
     root /usr/share/phpmyadmin;
     index index.php index.html index.htm;
     
-    # If you want to use a specific server name, uncomment and modify the next line
-    # server_name phpmyadmin.example.com;
+    # Add access to phpmyadmin directly from root URL
+    location /phpmyadmin {
+        alias /usr/share/phpmyadmin/;
+        index index.php index.html index.htm;
+        
+        location ~ ^/phpmyadmin/(.+\.php)$ {
+            alias /usr/share/phpmyadmin/$1;
+            fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+            fastcgi_index index.php;
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+        }
+        
+        location ~* ^/phpmyadmin/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt))$ {
+            alias /usr/share/phpmyadmin/$1;
+        }
+    }
     
+    # Original phpMyAdmin configuration
     location / {
         try_files $uri $uri/ =404;
     }
@@ -203,6 +223,17 @@ server {
     }
 }
 EOL
+
+# Create a symbolic link to ensure phpMyAdmin is also accessible at /phpmyadmin
+print_status "Creating symbolic link for /phpmyadmin path..."
+mkdir -p /usr/share/nginx/html/phpmyadmin
+if [ ! -L /usr/share/nginx/html/phpmyadmin ]; then
+    ln -sf /usr/share/phpmyadmin/* /usr/share/nginx/html/phpmyadmin/
+fi
+
+# Make sure permissions are correct
+chown -R www-data:www-data /usr/share/phpmyadmin
+chmod -R 755 /usr/share/phpmyadmin
 
 # Test Nginx configuration
 nginx -t
