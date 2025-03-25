@@ -141,6 +141,13 @@ systemctl start php8.2-fpm
 
 # Install phpMyAdmin manually instead of using the package manager
 print_status "Installing phpMyAdmin manually..."
+
+# Install curl if it's not already installed
+if ! command -v curl &> /dev/null; then
+    print_status "Installing curl..."
+    apt install -y curl
+fi
+
 # Create directory for phpMyAdmin
 mkdir -p /usr/share/phpmyadmin
 
