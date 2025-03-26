@@ -74,6 +74,17 @@ print_status "Starting MariaDB service..."
 systemctl start mariadb
 systemctl enable mariadb
 
+# Install UFW firewall if not already installed
+if ! command -v ufw &> /dev/null; then
+    print_status "Installing UFW firewall..."
+    apt install -y ufw
+fi
+
+# Configure firewall to allow HTTP and HTTPS traffic for phpMyAdmin access
+print_status "Configuring firewall to allow HTTP (80) and HTTPS (443) traffic..."
+ufw allow 80/tcp
+ufw allow 443/tcp
+
 # Configure MariaDB for network access if requested
 if [ "$NETWORK_ACCESS" = true ]; then
     print_status "Configuring MariaDB for network access..."
@@ -84,17 +95,9 @@ if [ "$NETWORK_ACCESS" = true ]; then
     # Update bind-address to allow connections from any IP
     sed -i 's/^bind-address\s*=.*/bind-address = 0.0.0.0/' /etc/mysql/mariadb.conf.d/50-server.cnf
     
-    # Install UFW firewall if not already installed
-    if ! command -v ufw &> /dev/null; then
-        print_status "Installing UFW firewall..."
-        apt install -y ufw
-    fi
-    
-    # Configure firewall to allow MariaDB and HTTP traffic
-    print_status "Configuring firewall to allow MariaDB (3306) and HTTP (80) traffic..."
+    # Configure firewall to allow MariaDB traffic
+    print_status "Configuring firewall to allow MariaDB (3306) traffic..."
     ufw allow 3306/tcp
-    ufw allow 80/tcp
-    ufw allow 443/tcp  # Also allow HTTPS
     
     # Enable UFW if it's not already enabled
     if ! ufw status | grep -q "Status: active"; then
@@ -515,31 +518,31 @@ fi
 print_status "Testing Nginx configuration..."
 nginx -t
 
-# Restart UFW
-print_status "Restarting UFW..."
-systemctl restart ufw
-
 # Restart Nginx
-print_status "Restarting Nginx..."
+print_status "Restarting Nginx..."x
 systemctl restart nginx
 
 # Final status
 print_status "Installation completed successfully!"
-print_status "MariaDB is installed and running."
+print_status "MariaDB is installed and running."ully!"
 
 if [ "$NETWORK_ACCESS" = true ]; then
     HOST_IP=$(hostname -I | awk '{print $1}')
     print_status "MariaDB is configured for network access at: $HOST_IP:3306"
-    print_status "Database user '$DB_USER' can be used for remote connections."
-    print_status "phpMyAdmin is available at http://$HOST_IP/phpmyadmin"
-    print_warning "Make sure your server's IP address is static to avoid connection issues."
-else
+    print_status "Database user '$DB_USER' can be used for remote connections."print_status "MariaDB is configured for network access at: $HOST_IP:3306"
+    print_status "phpMyAdmin is available at http://$HOST_IP/phpmyadmin"n be used for remote connections."
+    print_warning "Make sure your server's IP address is static to avoid connection issues."pmyadmin"
+else connection issues."
     HOST_IP=$(hostname -I | awk '{print $1}')
-    print_status "MariaDB is configured for local access only."
-    print_status "phpMyAdmin is available at http://$HOST_IP/phpmyadmin"
+    print_status "MariaDB is configured for local access only."  HOST_IP=$(hostname -I | awk '{print $1}')
+    print_status "phpMyAdmin is available at http://$HOST_IP/phpmyadmin"    print_status "MariaDB is configured for local access only."
     print_warning "To enable network access later, edit /etc/mysql/mariadb.conf.d/50-server.cnf and change bind-address to 0.0.0.0"
-fi
+fi    
 
 print_warning "Remember to keep your system updated regularly with: sudo apt update && sudo apt upgrade"
+
+
+
+exit 0print_warning "Remember to keep your system updated regularly with: sudo apt update && sudo apt upgrade"
 
 exit 0
