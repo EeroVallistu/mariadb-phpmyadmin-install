@@ -515,6 +515,10 @@ fi
 print_status "Testing Nginx configuration..."
 nginx -t
 
+# Restart UFW
+print_status "Restarting UFW..."
+systemctl restart ufw
+
 # Restart Nginx
 print_status "Restarting Nginx..."
 systemctl restart nginx
